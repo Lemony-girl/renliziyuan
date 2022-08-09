@@ -1,7 +1,6 @@
 /**
  * Created by PanJiaChen on 16/11/18.
  */
-
 /**
  * Parse the time to string
  * @param {(Object|string|number)} time
@@ -114,4 +113,44 @@ export function param2Obj(url) {
     }
   })
   return obj
+}
+
+// 筛选出pid=rootValue的所有节点
+export function transListToTree(list, rootValue) {
+  const arr = []
+  list.forEach(item => {
+    if (item.pid === rootValue) {
+      // 第一次传入rootValue的值为空，push到arr中作为一级节点
+      const children = transListToTree(list, item.id)
+      // 如果有子节点，把这些子节点作为当前item的children属性
+      if (children.length) {
+        item.children = children
+      }
+      arr.push(item)
+    }
+  })
+  return arr
+}
+
+// map
+export function transListToTreeNew(list, root) {
+// 构建好关系的树节点
+  const treeList = []
+  // 数组结构->map映射表->方便取数据不用遍历
+  const map = {}
+
+  list.forEach(item => {
+    map[item.id] = item
+  })
+
+  list.forEach(item => {
+    // 判断当前遍历项是否有父级节点
+    const parent = map[item.pid]
+    if (parent) {
+      parent.children = [...parent.children, item]
+    } else if (item.pid === root) {
+      treeList.push(item)
+    }
+  })
+  return treeList
 }

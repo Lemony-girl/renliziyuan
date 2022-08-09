@@ -1,85 +1,71 @@
 import axios from 'axios'
-import { MessageBox, Message } from 'element-ui'
+import router from '@/router'
+import {
+  Message
+} from 'element-ui'
 import store from '@/store'
-import { getToken } from '@/utils/auth'
+import { getTime } from './auth'
 
-// create an axios instance
-const service = axios.create({
-  baseURL: process.env.VUE_APP_BASE_API, // url = base url + request url
-  // withCredentials: true, // send cookies when cross-domain requests
-  timeout: 5000 // request timeout
+const request = axios.create({
+  baseURL: process.env.VUE_APP_BASE_API // 设置axios请求的基础的基础地址
 })
 
-// request interceptor
-service.interceptors.request.use(
-  config => {
-    // do something before request is sent
-
-    if (store.getters.token) {
-      // let each request carry token
-      // ['X-Token'] is a custom headers key
-      // please modify it according to the actual situation
-      config.headers['X-Token'] = getToken()
-    }
-    return config
-  },
-  error => {
-    // do something with request error
-    console.log(error) // for debug
-    return Promise.reject(error)
-  }
-)
-
-// response interceptor
-service.interceptors.response.use(
-  /**
-   * If you want to get http information such as headers or status
-   * Please return  response => response
-  */
-
-  /**
-   * Determine the request status by custom code
-   * Here is just an example
-   * You can also judge the status by HTTP Status Code
-   */
-  response => {
-    const res = response.data
-
-    // if the custom code is not 20000, it is judged as an error.
-    if (res.code !== 20000) {
-      Message({
-        message: res.message || 'Error',
-        type: 'error',
-        duration: 5 * 1000
-      })
-
-      // 50008: Illegal token; 50012: Other clients logged in; 50014: Token expired;
-      if (res.code === 50008 || res.code === 50012 || res.code === 50014) {
-        // to re-login
-        MessageBox.confirm('You have been logged out, you can cancel to stay on this page, or log in again', 'Confirm logout', {
-          confirmButtonText: 'Re-Login',
-          cancelButtonText: 'Cancel',
-          type: 'warning'
-        }).then(() => {
-          store.dispatch('user/resetToken').then(() => {
-            location.reload()
-          })
-        })
-      }
-      return Promise.reject(new Error(res.message || 'Error'))
+// token过期的时间
+const timeOut = 600000000
+// 如果没有过期返回true,如果过期返回false
+function isCheckTime() {
+  return Date.now() - getTime() < timeOut
+}
+// 请求拦截器
+request.interceptors.request.use(config => {
+  // 如果token存在，请求的时候把token携带到请求头
+  const token = store.getters.token
+  if (token) {
+    // 如果token没有过期，则发送请求
+    if (isCheckTime()) {
+      // token携带到请求头
+      config.headers.Authorization = `Bearer ${token}`
     } else {
-      return res
+      Message.error('登录过期，请重新登录')
+      store.dispatch('user/logOut')
+      router.push('/')
+      return Promise.reject('')
     }
-  },
-  error => {
-    console.log('err' + error) // for debug
-    Message({
-      message: error.message,
-      type: 'error',
-      duration: 5 * 1000
-    })
-    return Promise.reject(error)
   }
-)
+  return config
+}, error => Promise.reject(error))
 
-export default service
+// 响应拦截器
+request.interceptors.response.use(response => {
+  console.log(response)
+  const {
+    data: {
+      data,
+      success,
+      message
+    }
+  } = response
+  // 判断success是否为true
+  // true时->请求成功，data可用
+  console.log(message)
+  if (success) {
+    return data
+  }
+  // 如果代码走到这里，证明success不存在->接口请求有问题
+  Message.error(message || '系统错误')
+  // 失败的promise->接口请求的地方报错
+  return Promise.reject(message || '系统错误')
+}, error => {
+  // 添加错误处理方式
+  // 401->退出登录->跳转登录界面
+  if (error.response?.status === 401) {
+    // 退出登录
+    store.dispatch('/user/logOut')
+    router.push('/login')
+  }
+  Message.error(error?.response?.data?.message || '系统错误')
+  return Promise.reject(error)
+})
+
+// 默认导出request请求
+export default request
